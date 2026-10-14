@@ -12,7 +12,7 @@ if (!$checkSkorAwal || $checkSkorAwal->num_rows === 0) {
 $filter_ujian = isset($_GET['ujian']) ? (int)$_GET['ujian'] : 0;
 
 $ujian_list = [];
-$res_u = $conn->query("SELECT * FROM ujian ORDER BY created_at DESC");
+$res_u = $conn->query("SELECT * FROM ujian ORDER BY tgl_dibuat DESC");
 while ($row = $res_u->fetch_assoc()) {
     $ujian_list[$row['id']] = $row;
 }
