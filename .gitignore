@@ -11,6 +11,9 @@ migrations/*
 .DS_Store
 Thumbs.db
 
+# Ignore local dev overrides
+docker-compose.override.yml
+
 # Ignore IDE
 .idea/
 .vscode/

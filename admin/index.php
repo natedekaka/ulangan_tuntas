@@ -29,6 +29,8 @@ $has_browser_lock = false;
 $has_device_check = false;
 $has_timer_per_soal = false;
 $has_show_timer_per_soal = false;
+$has_target_nilai = false;
+$has_wajib_tuntas = false;
 try {
     $result_cols = $conn->query("SHOW COLUMNS FROM ujian LIKE 'acak_soal'");
     if ($result_cols && $result_cols->num_rows > 0) {
@@ -75,6 +77,14 @@ try {
     if ($result_cols10 && $result_cols10->num_rows > 0) {
         $has_show_timer_per_soal = true;
     }
+    $result_cols11 = $conn->query("SHOW COLUMNS FROM ujian LIKE 'target_nilai'");
+    if ($result_cols11 && $result_cols11->num_rows > 0) {
+        $has_target_nilai = true;
+    }
+    $result_cols12 = $conn->query("SHOW COLUMNS FROM ujian LIKE 'wajib_tuntas'");
+    if ($result_cols12 && $result_cols12->num_rows > 0) {
+        $has_wajib_tuntas = true;
+    }
 } catch (Exception $e) {
     $has_new_columns = false;
     $has_tampilkan_skor = false;
@@ -86,6 +96,8 @@ try {
     $has_device_check = false;
     $has_timer_per_soal = false;
     $has_show_timer_per_soal = false;
+    $has_target_nilai = false;
+    $has_wajib_tuntas = false;
 }
 
 if (isset($_GET['toggle']) && isset($_GET['id'])) {
@@ -166,6 +178,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan_ujian'])) {
         $show_timer_per_soal = $_POST['show_timer_per_soal'];
     }
     
+    // Target ketuntasan (0-100) dan wajib tuntas (ya/tidak)
+    $target_nilai = 75.00;
+    if ($has_target_nilai && isset($_POST['target_nilai'])) {
+        $target_nilai = max(0, min(100, (float)$_POST['target_nilai']));
+    }
+    $wajib_tuntas = 'ya';
+    if ($has_wajib_tuntas && isset($_POST['wajib_tuntas']) && ($_POST['wajib_tuntas'] === 'ya' || $_POST['wajib_tuntas'] === 'tidak')) {
+        $wajib_tuntas = $_POST['wajib_tuntas'];
+    }
+    
     $edit_id = isset($_POST['edit_id']) ? (int)$_POST['edit_id'] : 0;
     $original_updated = $_POST['original_updated'] ?? '';
     
@@ -240,6 +262,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan_ujian'])) {
                 if ($has_show_timer_per_soal) {
                     $fields .= ", show_timer_per_soal = ?";
                     $params[] = $show_timer_per_soal;
+                    $types .= "s";
+                }
+                if ($has_target_nilai) {
+                    $fields .= ", target_nilai = ?";
+                    $params[] = $target_nilai;
+                    $types .= "d";
+                }
+                if ($has_wajib_tuntas) {
+                    $fields .= ", wajib_tuntas = ?";
+                    $params[] = $wajib_tuntas;
                     $types .= "s";
                 }
                 
@@ -318,6 +350,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan_ujian'])) {
                 $fields .= ", show_timer_per_soal";
                 $values .= ", ?";
                 $params[] = $show_timer_per_soal;
+                $types .= "s";
+            }
+            if ($has_target_nilai) {
+                $fields .= ", target_nilai";
+                $values .= ", ?";
+                $params[] = $target_nilai;
+                $types .= "d";
+            }
+            if ($has_wajib_tuntas) {
+                $fields .= ", wajib_tuntas";
+                $values .= ", ?";
+                $params[] = $wajib_tuntas;
                 $types .= "s";
             }
             
@@ -898,6 +942,30 @@ if (isset($_GET['edit'])) {
                             </select>
                         </div>
                         <?php endif; ?>
+
+                        <?php if ($has_target_nilai): ?>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label fw-semibold text-success">
+                                <i class="bi bi-bullseye me-1"></i>Target Tuntas (KKM)
+                            </label>
+                            <input type="number" name="target_nilai" class="form-control"
+                                   value="<?= $edit_ujian ? (float)($edit_ujian['target_nilai'] ?? 75) : 75 ?>"
+                                   placeholder="75" min="0" max="100" step="0.01">
+                            <small class="text-muted">Nilai minimal agar dinyatakan tuntas.</small>
+                        </div>
+                        <?php endif; ?>
+
+                        <?php if ($has_wajib_tuntas): ?>
+                        <div class="col-md-3 mb-3">
+                            <label class="form-label fw-semibold text-success">
+                                <i class="bi bi-arrow-repeat me-1"></i>Wajib Tuntas
+                            </label>
+                            <select name="wajib_tuntas" class="form-select">
+                                <option value="ya" <?= $edit_ujian && ($edit_ujian['wajib_tuntas'] ?? 'ya') === 'ya' ? 'selected' : '' ?>>Ya - ulangi sampai tuntas</option>
+                                <option value="tidak" <?= $edit_ujian && ($edit_ujian['wajib_tuntas'] ?? 'ya') === 'tidak' ? 'selected' : '' ?>>Tidak - cukup sekali</option>
+                            </select>
+                        </div>
+                        <?php endif; ?>
                         
                         <?php if ($has_timer_per_soal): ?>
                         <div class="col-md-3 mb-3">
@@ -1033,6 +1101,9 @@ if (isset($_GET['edit'])) {
                                 <td>
                                     <div class="fw-semibold"><?= htmlspecialchars($row['judul_ujian']) ?></div>
                                     <small class="text-muted"><?= htmlspecialchars(mb_strimwidth($row['deskripsi'] ?? '', 0, 60, '...')) ?></small>
+                                    <?php if ($has_wajib_tuntas && ($row['wajib_tuntas'] ?? 'ya') === 'ya'): ?>
+                                    <div><span class="badge bg-success mt-1"><i class="bi bi-bullseye me-1"></i>Tuntas &ge; <?= number_format((float)($row['target_nilai'] ?? 75), 0) ?></span></div>
+                                    <?php endif; ?>
                                 </td>
                                 <td class="text-center">
                                     <span class="badge bg-<?= $row['status'] === 'aktif' ? 'success' : 'secondary' ?>">

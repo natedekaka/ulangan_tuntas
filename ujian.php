@@ -3,6 +3,7 @@
 
 require_once 'config/database.php';
 require_once 'config/init_sekolah.php';
+require_once 'config/tuntas.php';
 
 $sekolah = getKonfigurasiSekolah($conn);
 
@@ -125,6 +126,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_ujian'])) {
         
         $detail_jawaban_json = json_encode($detail_jawaban);
         $submit_success = false;
+        $hasil_tuntas = null;
         
         try {
             $conn->begin_transaction();
@@ -137,30 +139,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_ujian'])) {
                 throw new Exception("Gagal mendapatkan lock. Silakan coba lagi.");
             }
             
-            $check = $conn->prepare("SELECT id FROM hasil_ujian WHERE id_ujian = ? AND nis = ? LIMIT 1");
-            $check->bind_param("is", $id_ujian, $nis);
-            $check->execute();
-            $check_result = $check->get_result();
-            
-            if ($check_result->num_rows > 0) {
+            if (!tuntasBolehUlang($conn, $id_ujian, $nis)) {
                 $conn->query("DO RELEASE_LOCK('$lock_name')");
                 $conn->rollback();
                 $message = "Anda sudah submit ujian ini!";
                 $message_type = 'warning';
             } else {
-                $check->close();
-                
-                if ($detail_jawaban_json) {
-                    $stmt = $conn->prepare("INSERT INTO hasil_ujian (id_ujian, nis, nama, kelas, total_skor, detail_jawaban, submitted_at) VALUES (?, ?, ?, ?, ?, ?, NOW())");
-                    $stmt->bind_param("isssis", $id_ujian, $nis, $nama, $kelas, $total_skor, $detail_jawaban_json);
-                } else {
-                    $stmt = $conn->prepare("INSERT INTO hasil_ujian (id_ujian, nis, nama, kelas, total_skor, submitted_at) VALUES (?, ?, ?, ?, ?, NOW())");
-                    $stmt->bind_param("isssi", $id_ujian, $nis, $nama, $kelas, $total_skor);
-                }
-                
-                if (!$stmt->execute()) {
-                    throw new Exception("Gagal menyimpan hasil ujian.");
-                }
+                $ip = $_SERVER['REMOTE_ADDR'] ?? null;
+                $hasil_tuntas = tuntasCatatHasil(
+                    $conn, $id_ujian, $nis, $nama, $kelas, $total_skor, null,
+                    $detail_jawaban_json, $ip
+                );
                 
                 $conn->query("DO RELEASE_LOCK('$lock_name')");
                 $conn->commit();
@@ -169,7 +158,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_ujian'])) {
             }
         } catch (Exception $e) {
             $conn->query("DO RELEASE_LOCK('$lock_name')");
-            $conn->rollback();
+            try { $conn->rollback(); } catch (Exception $ignored) {}
             $message = $e->getMessage();
             $message_type = 'danger';
         }
@@ -325,10 +314,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_ujian'])) {
                                 <h2 class="fw-bold mb-2" style="animation: slideUp 0.6s ease-out 0.4s both;">Selamat!</h2>
                                 <p class="text-muted mb-4" style="animation: slideUp 0.6s ease-out 0.5s both;">Jawaban Anda telah berhasil disubmit</p>
                                 
+                                <?php
+                                    $tuntas_nilai  = $hasil_tuntas['nilai'] ?? 0;
+                                    $tuntas_target = $hasil_tuntas['target'] ?? 75;
+                                    $tuntas_status = $hasil_tuntas['tuntas'] ?? false;
+                                    $tuntas_ulang  = ($hasil_tuntas['wajib_tuntas'] ?? true) && !$tuntas_status;
+                                ?>
                                 <?php if (!isset($ujian['tampilkan_skor']) || $ujian['tampilkan_skor'] === 'ya'): ?>
                                 <div class="my-4" style="animation: slideUp 0.6s ease-out 0.6s both;">
-                                    <p class="text-muted mb-2 fw-medium">Total Skor Anda</p>
-                                    <div class="skor-box"><?= $total_skor ?></div>
+                                    <p class="text-muted mb-2 fw-medium">Nilai Anda</p>
+                                    <div class="skor-box"><?= number_format($tuntas_nilai, 0) ?></div>
+                                    <p class="text-muted mb-0">Target tuntas: <strong><?= number_format($tuntas_target, 0) ?></strong></p>
+                                </div>
+                                <?php endif; ?>
+
+                                <?php if ($tuntas_status): ?>
+                                <div class="alert alert-success" role="alert">
+                                    <i class="bi bi-patch-check-fill me-2"></i><strong>TUNTAS!</strong> Anda telah mencapai target nilai.
+                                </div>
+                                <?php else: ?>
+                                <div class="alert alert-warning" role="alert">
+                                    <i class="bi bi-arrow-repeat me-2"></i><strong>Belum Tuntas.</strong> Nilai Anda belum mencapai target <?= number_format($tuntas_target, 0) ?>. Silakan ulangi ulangan ini.
                                 </div>
                                 <?php endif; ?>
                                 
@@ -351,6 +357,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['submit_ujian'])) {
                                 <a href="index.php" class="btn btn-home text-white">
                                     <i class="bi bi-house-door me-2"></i>Kembali ke Halaman Utama
                                 </a>
+                                <?php if ($tuntas_ulang): ?>
+                                <a href="ujian.php?id=<?= $id_ujian ?>" class="btn btn-warning mt-3 text-white">
+                                    <i class="bi bi-arrow-repeat me-2"></i>Ulangi Ulangan
+                                </a>
+                                <?php endif; ?>
                                 <?php if (isset($ujian['tampilkan_review']) && $ujian['tampilkan_review'] === 'ya'): ?>
                                 <a href="review.php?nis=<?= urlencode($nis) ?>&id_ujian=<?= $id_ujian ?>" class="btn btn-outline-primary mt-3">
                                     <i class="bi bi-card-checklist me-2"></i>Lihat Pembahasan
@@ -1982,7 +1993,7 @@ function initExamFeatures() {
         }
         
         function showAlreadyCompleted(result) {
-            // Check if student can retake (has saved answers but can retake)
+            // Mode "sampai tuntas": siswa yang tampil di sini sudah TUNTAS.
             if (result.can_retake) {
                 document.getElementById('formUjian').innerHTML = `
                     <div class="alert alert-info text-center py-5">
@@ -1996,12 +2007,14 @@ function initExamFeatures() {
                     </div>
                 `;
             } else {
+                const nilai = (result.nilai !== undefined && result.nilai !== null) ? result.nilai : result.skor;
+                const target = result.target || 75;
                 document.getElementById('formUjian').innerHTML = `
-                    <div class="alert alert-warning text-center py-5">
-                        <i class="bi bi-exclamation-triangle-fill" style="font-size: 3rem;"></i>
-                        <h3 class="mt-3">Anda sudah mengerjakan ujian ini</h3>
-                        <p class="mb-2">Skor Anda: <strong>${result.skor}</strong></p>
-                        <p class="text-muted">Tanggal: ${new Date(result.tanggal).toLocaleString('id-ID')}</p>
+                    <div class="alert alert-success text-center py-5">
+                        <i class="bi bi-patch-check-fill" style="font-size: 3rem;"></i>
+                        <h3 class="mt-3">Anda Sudah TUNTAS</h3>
+                        <p class="mb-1">Nilai Anda: <strong>${Math.round(nilai)}</strong> dari target <strong>${Math.round(target)}</strong></p>
+                        <p class="text-muted mb-0">Anda telah menyelesaikan ulangan ini dan tidak perlu mengulang.</p>
                         <a href="index.php" class="btn btn-primary mt-3">Kembali ke Halaman Utama</a>
                     </div>
                 `;
@@ -2220,8 +2233,23 @@ function initExamFeatures() {
                 if (data.success) {
                     localStorage.removeItem('exam_nis');
                     localStorage.removeItem(STORAGE_KEY);
-                    // Pass penalty info to success page
-                    showSuccessPage(data.skor, nis, nama, kelas, data.skor_awal || data.skor, data.penalty || 0, data.violation_count || 0);
+                    // Tampilkan hasil + status ketuntasan
+                    showSuccessPage({
+                        skor: data.skor,
+                        skorAwal: data.skor_awal || data.skor,
+                        penalty: data.penalty || 0,
+                        violationCount: data.violation_count || 0,
+                        nilai: data.nilai,
+                        nilaiTerbaik: data.nilai_terbaik,
+                        target: data.target,
+                        tuntas: data.tuntas,
+                        wajibTuntas: data.wajib_tuntas,
+                        percobaanKe: data.percobaan_ke,
+                        totalPoinMaks: data.total_poin_maks,
+                        nis: nis,
+                        nama: nama,
+                        kelas: kelas
+                    });
                 } else {
                     alert('Error: ' + data.message);
                     btn.innerHTML = originalText;
@@ -2347,7 +2375,23 @@ function initExamFeatures() {
             showSummary();
         };
         
-        function showSuccessPage(skor, nis, nama, kelas, skorAwal = null, penalty = 0, violationCount = 0) {
+        function showSuccessPage(opts = {}) {
+            const skor           = opts.skor ?? 0;
+            const nis            = opts.nis ?? '';
+            const nama           = opts.nama ?? '';
+            const kelas          = opts.kelas ?? '';
+            const skorAwal       = opts.skorAwal ?? skor;
+            const penalty        = opts.penalty ?? 0;
+            const violationCount = opts.violationCount ?? 0;
+            const nilai          = (opts.nilai !== undefined && opts.nilai !== null) ? opts.nilai : skor;
+            const nilaiTerbaik   = (opts.nilaiTerbaik !== undefined && opts.nilaiTerbaik !== null) ? opts.nilaiTerbaik : nilai;
+            const target         = opts.target ?? 75;
+            const tuntas         = !!opts.tuntas;
+            const wajibTuntas    = (opts.wajibTuntas === undefined) ? true : !!opts.wajibTuntas;
+            const percobaanKe    = opts.percobaanKe ?? 1;
+            const bolehUlang     = wajibTuntas && !tuntas;
+            const ulangiUrl      = 'ujian.php?id=' + encodeURIComponent(ID_UJIAN);
+
             localStorage.setItem('exam_nis', nis);
             localStorage.setItem('exam_nama', nama);
             localStorage.setItem('exam_kelas', kelas);
@@ -2441,15 +2485,23 @@ function initExamFeatures() {
                         <div class="row justify-content-center">
                             <div class="col-md-6">
                                 <div class="card p-5 text-center">
-                                    <div class="success-icon mb-4">
-                                        <i class="bi bi-check-lg"></i>
+                                    <div class="success-icon mb-4" style="${tuntas ? '' : 'background: linear-gradient(135deg, #f59e0b 0%, #fbbf24 100%); box-shadow: 0 10px 40px rgba(245,158,11,0.4);'}">
+                                        <i class="bi ${tuntas ? 'bi-check-lg' : 'bi-arrow-repeat'}"></i>
                                     </div>
-                                    <h2 class="fw-bold mb-2">Selamat!</h2>
-                                    <p class="text-muted mb-4">Jawaban Anda telah berhasil disubmit</p>
+                                    <h2 class="fw-bold mb-2">${tuntas ? 'Selamat, TUNTAS!' : 'Belum Tuntas'}</h2>
+                                    <p class="text-muted mb-4">${tuntas ? 'Anda telah mencapai target nilai.' : 'Nilai Anda belum mencapai target. Silakan ulangi ulangan ini.'}</p>
                                     <div class="my-4">
-                                        <p class="text-muted mb-2 fw-medium">Total Skor Anda</p>
-                                        <div class="skor-box">${skor}</div>
+                                        <p class="text-muted mb-2 fw-medium">Nilai Anda (percobaan ke-${percobaanKe})</p>
+                                        <div class="skor-box">${Math.round(nilai)}</div>
+                                        <p class="text-muted mb-1">Target tuntas: <strong>${Math.round(target)}</strong></p>
+                                        ${(!tuntas && nilaiTerbaik > nilai) ? `<p class="text-muted small mb-0">Nilai terbaik Anda sejauh ini: <strong>${Math.round(nilaiTerbaik)}</strong></p>` : ''}
                                     </div>
+                                    <div class="alert ${tuntas ? 'alert-success' : 'alert-warning'} text-start" style="border-radius:12px;">
+                                        ${tuntas
+                                            ? '<i class="bi bi-patch-check-fill me-2"></i><strong>TUNTAS!</strong> Anda tidak perlu mengulang.'
+                                            : '<i class="bi bi-info-circle-fill me-2"></i><strong>Wajib mengulang.</strong> Kerjakan lagi sampai nilai minimal ' + Math.round(target) + '.'}
+                                    </div>
+                                    ${penaltyHtml}
                                     <div class="info-card mb-4">
                                         <div class="row">
                                             <div class="col-12">
@@ -2468,6 +2520,10 @@ function initExamFeatures() {
                                     <a href="index.php" class="btn btn-home">
                                         <i class="bi bi-house-door me-2"></i>Kembali ke Halaman Utama
                                     </a>
+                                    ${bolehUlang ? `
+                                    <a href="${ulangiUrl}" class="btn btn-warning w-100 mt-3 text-white fw-semibold" style="border-radius:30px;padding:15px 40px;">
+                                        <i class="bi bi-arrow-repeat me-2"></i>Ulangi Ulangan Sekarang
+                                    </a>` : ''}
                                 </div>
                             </div>
                         </div>

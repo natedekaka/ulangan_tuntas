@@ -1,6 +1,17 @@
-# Exam6 - Sistem Ujian Online
+# Ulangan Tuntas - Sistem Ujian Online
 
 Aplikasi ujian online berbasis PHP dan MySQL untuk sekolah dengan fitur keamanan dan administrasi yang lengkap. Mendukung ujian berbasis komputer (CBT) dengan berbagai fitur keamanan.
+
+## ⭐ Mode "Ulangan Sampai Tuntas"
+
+Fitur utama aplikasi ini: siswa **wajib mencapai target nilai (default 75)** untuk dinyatakan **tuntas**. Jika belum tuntas, siswa **mengulang ulangan** (soal & pilihan jawaban diacak ulang setiap percobaan) sampai mencapai target.
+
+- **Target ketuntasan (KKM)** dapat diatur per ujian (`target_nilai`, default `75`).
+- **Wajib tuntas** dapat diaktifkan/nonaktifkan per ujian (`wajib_tuntas`).
+- Setiap percobaan **dicatat** di tabel `percobaan_ujian` (tidak menimpa percobaan sebelumnya).
+- Nilai yang dilaporkan ke guru = **nilai TERTINGGI** dari semua percobaan (`MAX(nilai)`).
+- Siswa yang sudah **tuntas tidak bisa mengulang** (kecuali guru memberi izin remedi).
+- Nilai dihitung sebagai persentase: `nilai = (total_skor / total_poin_maks) * 100`.
 
 ## Kompatibilitas
 
@@ -24,6 +35,7 @@ Aplikasi ujian online berbasis PHP dan MySQL untuk sekolah dengan fitur keamanan
 ### Admin
 - **Manajemen Ujian (CRUD)** dengan pengaturan keamanan lengkap
   - Atur judul, deskripsi, durasi, dan status ujian
+  - Atur **Target Tuntas (KKM)** dan **Wajib Tuntas** (ulangi sampai tuntas)
   - Opsi acak soal per siswa
   - Tampilkan/nilai ulang hasil ujian
 - **Bank Soal** (tambah/edit/hapus soal dengan gambar)
@@ -47,6 +59,7 @@ Aplikasi ujian online berbasis PHP dan MySQL untuk sekolah dengan fitur keamanan
 - **Rekap Nilai** dengan ekspor Excel
   - Filter berdasarkan ujian dan kelas
   - Statistik nilai (rata-rata, tertinggi, terendah)
+  - Kolom **Nilai (persentase)**, **Status TUNTAS/BELUM TUNTAS**, dan jumlah percobaan
   - Detail jawaban per siswa
 - **Monitor Ujian Real-time**
   - Lihat siswa yang sedang mengerjakan
@@ -72,7 +85,10 @@ Aplikasi ujian online berbasis PHP dan MySQL untuk sekolah dengan fitur keamanan
 ### Siswa
 - **Landing Page** dengan daftar ujian yang tersedia
   - Filter ujian berdasarkan status
+  - Menampilkan **target ketuntasan** tiap ujian
   - Tampilan responsif dan informatif
+- **Ulangan Sampai Tuntas**: jika nilai belum mencapai target, tampil tombol **Ulangi Ulangan** (soal diacak ulang)
+- **Riwayat Nilai**: status TUNTAS/BELUM TUNTAS, nilai terbaik, dan jumlah percobaan
 - **Verifikasi Kode Rahasia** sebelum ujian (jika diaktifkan)
 - **Input Identitas** (NIS, Nama, Kelas) sebelum mulai
 - **Sistem Ujian Interaktif** dengan timer countdown
@@ -124,7 +140,7 @@ Aplikasi ujian online berbasis PHP dan MySQL untuk sekolah dengan fitur keamanan
 ## Struktur Direktori
 
 ```
-exam6/
+ulangan_tuntas/
 ├── admin/                      # Panel admin
 │   ├── index.php              # Dashboard admin
 │   ├── login.php              # Login admin
@@ -144,13 +160,15 @@ exam6/
 │   └── submit_jawaban.php      # Submit jawaban siswa
 ├── config/                     # Konfigurasi
 │   ├── database.php            # Konfigurasi database
-│   ├── init_sekolah.php        # Inisialisasi sekolah & tabel
+│   ├── init_sekolah.php        # Inisialisasi sekolah & tabel (termasuk kolom tuntas)
+│   ├── tuntas.php              # Logika "Ulangan Sampai Tuntas" (hitung nilai, percobaan, status)
 │   └── db_helper.php           # Database helper functions (fetchAllPrepared, fetchRowPrepared)
 ├── vendor/                     # Library (Bootstrap, Bootstrap Icons)
 ├── uploads/                    # File upload (logo, gambar soal)
 ├── migrations/                 # Database migrations
 │   ├── 06_performance_indexes.sql
-│   └── 07_add_kategori_timer_soal.sql
+│   ├── 07_add_kategori_timer_soal.sql
+│   └── 09_ulangan_tuntas.sql   # Kolom target_nilai/wajib_tuntas + tabel percobaan_ujian
 ├── backup_db/                  # Database backup
 │   └── ujian_online.sql       # Full database backup
 ├── index.php                   # Landing page (list ujian)
@@ -160,6 +178,39 @@ exam6/
 ├── docker-compose.yml          # Konfigurasi Podman
 └── README.md                   # Dokumentasi ini
 ```
+
+---
+
+## Skema Database (Fitur Tuntas)
+
+Fitur "ulangan sampai tuntas" menambahkan:
+
+**Kolom baru pada tabel `ujian`:**
+
+| Kolom | Tipe | Default | Keterangan |
+|-------|------|---------|------------|
+| `target_nilai` | DECIMAL(5,2) | 75.00 | Nilai minimal agar dinyatakan tuntas |
+| `wajib_tuntas` | ENUM('ya','tidak') | 'ya' | Jika `ya`, siswa wajib mengulang sampai mencapai target |
+
+**Tabel baru `percobaan_ujian`** (mencatat setiap percobaan, tidak menimpa yang lama):
+
+| Kolom | Tipe | Keterangan |
+|-------|------|------------|
+| `id` | INT PK | |
+| `id_ujian` | INT | FK ke `ujian` |
+| `nis`, `nama`, `kelas` | | Identitas siswa |
+| `percobaan_ke` | INT | Urutan percobaan (1, 2, 3, ...) |
+| `total_skor` | INT | Skor mentah percobaan ini |
+| `total_poin_maks` | INT | Total poin maksimal ujian |
+| `nilai` | DECIMAL(5,2) | Persentase nilai percobaan ini |
+| `jumlah_benar`, `jumlah_soal` | INT | Ringkasan jawaban |
+| `tuntas` | TINYINT(1) | 1 bila nilai >= target |
+| `detail_jawaban` | LONGTEXT | JSON detail jawaban |
+| `waktu_submit` | DATETIME | Waktu submit |
+
+> Tabel `hasil_ujian` (dipakai fitur lain: rekap, analytics, monitor) tetap ada dan menyimpan **percobaan terbaik** per `(id_ujian, nis)`. Jadi nilai yang tampil di rekap = nilai tertinggi.
+
+Kolom & tabel ini dibuat **otomatis** oleh `config/init_sekolah.php` saat aplikasi dijalankan. Untuk setup manual, gunakan `migrations/09_ulangan_tuntas.sql`.
 
 ---
 
@@ -179,11 +230,11 @@ Tidak perlu install PHP, MySQL, atau Apache. Cukup jalankan 3 perintah.
 #### Langkah 1: Clone atau Download
 
 ```bash
-git clone https://github.com/natedekaka/exam6.git
-cd exam6
+git clone https://github.com/natedekaka/ulangan_tuntas.git
+cd ulangan_tuntas
 ```
 
-Atau download ZIP dari https://github.com/natedekaka/exam6, ekstrak, lalu buka terminal di folder `exam6`.
+Atau download ZIP dari https://github.com/natedekaka/ulangan_tuntas, ekstrak, lalu buka terminal di folder `ulangan_tuntas`.
 
 #### Langkah 2: Jalankan Aplikasi
 
@@ -385,6 +436,9 @@ Setelah semua langkah di atas:
   - **Status**: Aktif/Nonaktif
   - **Acak Soal**: Ya/Tidak (soal akan diacak per siswa)
   - **Tampilkan Review**: Izinkan siswa melihat review setelah submit
+  - **Target Tuntas (KKM)**: Nilai minimal agar siswa dinyatakan tuntas (default 75)
+  - **Wajib Tuntas**: `Ya` = siswa wajib mengulang sampai mencapai target; `Tidak` = cukup sekali mengerjakan
+  - **Acak Opsi**: Ya (disarankan) agar pilihan jawaban ikut diacak ulang tiap percobaan
   
 - **Pengaturan Keamanan** (di form ujian):
   - **Kode Ujian**: Kode rahasia yang harus dimasukkan siswa
@@ -667,8 +721,8 @@ Kontribusi selalu diterima! Silakan:
 
 ## Kontak & Support
 
-- **Repository**: https://github.com/natedekaka/exam6
-- **Issues**: https://github.com/natedekaka/exam6/issues
+- **Repository**: https://github.com/natedekaka/ulangan_tuntas
+- **Issues**: https://github.com/natedekaka/ulangan_tuntas/issues
 - **Email**: natedekaka@gmail.com
 
 ---

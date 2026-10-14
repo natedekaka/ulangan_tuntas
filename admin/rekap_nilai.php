@@ -14,6 +14,7 @@ if (!isset($_SESSION['admin_id'])) {
 
 require_once '../config/database.php';
 require_once '../config/init_sekolah.php';
+require_once '../config/tuntas.php';
 
 $sekolah = getKonfigurasiSekolah($conn);
 
@@ -55,7 +56,7 @@ if ($selected_ujian > 0) {
         case 'kelas_asc': $order_by = 'h.kelas ASC, h.nama ASC'; break;
     }
     
-    $sql = "SELECT h.*, u.judul_ujian, 
+    $sql = "SELECT h.*, u.judul_ujian, u.target_nilai, u.wajib_tuntas, 
                 (SELECT COUNT(*) FROM exam_violations v WHERE v.id_ujian = h.id_ujian AND v.nis = h.nis) as jumlah_pelanggaran
                 FROM hasil_ujian h 
                 JOIN ujian u ON h.id_ujian = u.id 
@@ -74,6 +75,40 @@ if ($selected_ujian > 0) {
         $all_results[] = $row;
     }
     $stmt->close();
+
+    // Total poin maksimal & target ujian (untuk hitung nilai persentase)
+    $rekap_total_poin = tuntasTotalPoinMaks($conn, $selected_ujian);
+    $rekap_target = 75.0;
+    $rekap_wajib_tuntas = true;
+    if (count($all_results) > 0) {
+        $rekap_target = (float)($all_results[0]['target_nilai'] ?? 75);
+        $rekap_wajib_tuntas = ($all_results[0]['wajib_tuntas'] ?? 'ya') === 'ya';
+    } else {
+        $ujian_info_stmt = $conn->prepare("SELECT target_nilai, wajib_tuntas FROM ujian WHERE id = ?");
+        if ($ujian_info_stmt) {
+            $ujian_info_stmt->bind_param("i", $selected_ujian);
+            $ujian_info_stmt->execute();
+            $ujian_info_row = $ujian_info_stmt->get_result()->fetch_assoc();
+            $ujian_info_stmt->close();
+            if ($ujian_info_row) {
+                $rekap_target = (float)($ujian_info_row['target_nilai'] ?? 75);
+                $rekap_wajib_tuntas = ($ujian_info_row['wajib_tuntas'] ?? 'ya') === 'ya';
+            }
+        }
+    }
+
+    // Jumlah percobaan per siswa
+    $rekap_percobaan = [];
+    $stmtP = $conn->prepare("SELECT nis, COUNT(*) AS c FROM percobaan_ujian WHERE id_ujian = ? GROUP BY nis");
+    if ($stmtP) {
+        $stmtP->bind_param("i", $selected_ujian);
+        $stmtP->execute();
+        $resP = $stmtP->get_result();
+        while ($rowP = $resP->fetch_assoc()) {
+            $rekap_percobaan[$rowP['nis']] = (int)$rowP['c'];
+        }
+        $stmtP->close();
+    }
     
     if (count($all_results) > 0) {
         $scores = array_column($all_results, 'total_skor');
@@ -793,6 +828,8 @@ if (isset($_POST['delete_all']) && isset($_POST['id_ujian_batch'])) {
                                 <th>NIS</th>
                                 <th>Nama</th>
                                 <th>Kelas</th>
+                                <th class="text-center" style="width: 70px;">Nilai</th>
+                                <th class="text-center" style="width: 110px;">Status</th>
                                 <th class="text-center" style="width: 80px;">Skor Asli</th>
                                 <th class="text-center" style="width: 80px;">Skor Akhir</th>
                                 <th class="text-center" style="width: 80px;">Potongan</th>
@@ -813,6 +850,28 @@ if (isset($_POST['delete_all']) && isset($_POST['id_ujian_batch'])) {
                                 <td><?= htmlspecialchars($hasil['nis']) ?></td>
                                 <td class="fw-semibold"><?= htmlspecialchars($hasil['nama']) ?></td>
                                 <td><?= htmlspecialchars($hasil['kelas']) ?></td>
+                                <!-- Nilai (persentase) -->
+                                <?php
+                                    $rekap_nilai_persen = tuntasHitungNilai((int)$hasil['total_skor'], $rekap_total_poin);
+                                    $rekap_tuntas = $rekap_nilai_persen >= $rekap_target;
+                                    $rekap_percobaan_ke = $rekap_percobaan[$hasil['nis']] ?? 1;
+                                ?>
+                                <td class="text-center">
+                                    <span class="badge bg-<?= $rekap_tuntas ? 'success' : 'warning text-dark' ?>">
+                                        <?= (int)round($rekap_nilai_persen) ?>
+                                    </span>
+                                    <div><small class="text-muted"><?= max(1, $rekap_percobaan_ke) ?>x</small></div>
+                                </td>
+                                <!-- Status Tuntas -->
+                                <td class="text-center">
+                                    <?php if (!$rekap_wajib_tuntas): ?>
+                                        <span class="badge bg-secondary">-</span>
+                                    <?php elseif ($rekap_tuntas): ?>
+                                        <span class="badge bg-success"><i class="bi bi-patch-check-fill me-1"></i>TUNTAS</span>
+                                    <?php else: ?>
+                                        <span class="badge bg-warning text-dark"><i class="bi bi-arrow-repeat me-1"></i>BELUM</span>
+                                    <?php endif; ?>
+                                </td>
                                 <!-- Skor Asli -->
                                 <td class="text-center">
                                     <?php 

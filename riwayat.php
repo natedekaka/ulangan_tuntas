@@ -3,6 +3,7 @@
 
 require_once 'config/database.php';
 require_once 'config/init_sekolah.php';
+require_once 'config/tuntas.php';
 
 $sekolah = getKonfigurasiSekolah($conn);
 
@@ -21,7 +22,7 @@ if ($result_cols && $result_cols->num_rows > 0) {
 
 if ($has_review_col) {
     $stmt = $conn->prepare("
-        SELECT h.*, u.judul_ujian, u.tampilkan_review 
+        SELECT h.*, u.judul_ujian, u.tampilkan_review, u.target_nilai, u.wajib_tuntas, u.status AS status_ujian
         FROM hasil_ujian h 
         JOIN ujian u ON h.id_ujian = u.id 
         WHERE h.nis = ? 
@@ -29,7 +30,7 @@ if ($has_review_col) {
     ");
 } else {
     $stmt = $conn->prepare("
-        SELECT h.*, u.judul_ujian 
+        SELECT h.*, u.judul_ujian, u.target_nilai, u.wajib_tuntas, u.status AS status_ujian
         FROM hasil_ujian h 
         JOIN ujian u ON h.id_ujian = u.id 
         WHERE h.nis = ? 
@@ -215,13 +216,19 @@ $stmt->close();
         <?php if (count($riwayat_list) > 0): ?>
             <?php foreach ($riwayat_list as $rw): ?>
             <?php 
-            $stmt = $conn->prepare("SELECT COUNT(*) as total FROM soal WHERE id_ujian = ?");
-            $stmt->bind_param("i", $rw['id_ujian']);
+            $total_poin_maks = tuntasTotalPoinMaks($conn, $rw['id_ujian']);
+            $nilai_persen = tuntasHitungNilai((int)$rw['total_skor'], $total_poin_maks);
+            $target = isset($rw['target_nilai']) ? (float)$rw['target_nilai'] : 75.0;
+            $wajib_tuntas = !isset($rw['wajib_tuntas']) || $rw['wajib_tuntas'] === 'ya';
+            $status_tuntas = ($nilai_persen >= $target);
+            $nilai_persen = (int)round($nilai_persen);
+
+            // Jumlah percobaan
+            $stmt = $conn->prepare("SELECT COUNT(*) AS total FROM percobaan_ujian WHERE id_ujian = ? AND nis = ?");
+            $stmt->bind_param("is", $rw['id_ujian'], $nis);
             $stmt->execute();
-            $jml_soal = $stmt->get_result()->fetch_assoc()['total'];
+            $jml_percobaan = (int)($stmt->get_result()->fetch_assoc()['total'] ?? 0);
             $stmt->close();
-            
-            $nilai_persen = $jml_soal > 0 ? round(($rw['total_skor'] / ($jml_soal * 10)) * 100) : 0;
             
             if ($nilai_persen >= 80) {
                 $skor_class = 'skor-sangat-baik';
@@ -233,21 +240,38 @@ $stmt->close();
                 $skor_class = 'skor-kurang';
             }
             ?>
-            <div class="history-card">
+            <div class="history-card" style="border-left-color: <?= $status_tuntas ? '#10b981' : '#f59e0b' ?>;">
                 <div class="row align-items-center">
                     <div class="col-md-6">
                         <h5 class="fw-bold mb-1"><?= htmlspecialchars($rw['judul_ujian']) ?></h5>
-                        <p class="text-muted mb-0 small">
+                        <p class="text-muted mb-1 small">
                             <i class="bi bi-calendar3 me-1"></i><?= date('d M Y, H:i', strtotime($rw['waktu_submit'])) ?>
+                            <span class="mx-2">|</span>
+                            <i class="bi bi-arrow-repeat me-1"></i><?= max(1, $jml_percobaan) ?>x percobaan
                         </p>
+                        <?php if ($wajib_tuntas): ?>
+                            <?php if ($status_tuntas): ?>
+                            <span class="badge bg-success"><i class="bi bi-patch-check-fill me-1"></i>TUNTAS</span>
+                            <?php else: ?>
+                            <span class="badge bg-warning text-dark"><i class="bi bi-arrow-repeat me-1"></i>BELUM TUNTAS (target <?= number_format($target, 0) ?>)</span>
+                            <?php endif; ?>
+                        <?php else: ?>
+                            <span class="badge bg-secondary">Nilai tercatat</span>
+                        <?php endif; ?>
                     </div>
                     <div class="col-md-3 text-center">
                         <div class="skor-badge <?= $skor_class ?>">
-                            <?= $rw['total_skor'] ?>
+                            <?= $nilai_persen ?>
                         </div>
-                        <small class="text-muted"><?= $nilai_persen ?>%</small>
+                        <small class="text-muted">Nilai (<?= $rw['total_skor'] ?>/<?= $total_poin_maks ?> poin)</small>
                     </div>
                     <div class="col-md-3 text-end">
+                        <?php if ($wajib_tuntas && !$status_tuntas && $rw['status_ujian'] === 'aktif'): ?>
+                        <a href="ujian.php?id=<?= $rw['id_ujian'] ?>" class="btn btn-warning text-white mb-2">
+                            <i class="bi bi-arrow-repeat me-1"></i>Ulangi
+                        </a>
+                        <br>
+                        <?php endif; ?>
                         <?php if ($has_review_col && isset($rw['tampilkan_review']) && $rw['tampilkan_review'] === 'ya'): ?>
                         <a href="review.php?nis=<?= urlencode($nis) ?>&id_ujian=<?= $rw['id_ujian'] ?>" class="btn btn-review">
                             <i class="bi bi-card-checklist me-1"></i>Lihat Pembahasan

@@ -18,27 +18,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 
 require_once '../config/database.php';
 require_once '../config/init_sekolah.php';
+require_once '../config/tuntas.php';
 
 function validateUniqueAttempt($conn, $id_ujian, $nis) {
-    $stmt = $conn->prepare("SELECT id FROM hasil_ujian WHERE id_ujian = ? AND nis = ? LIMIT 1");
-    $stmt->bind_param("is", $id_ujian, $nis);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $has_completed = $result->num_rows > 0;
-    $stmt->close();
-    
-    if ($has_completed) {
-        $stmt2 = $conn->prepare("SELECT id FROM izin_remedi WHERE id_ujian = ? AND nis = ? LIMIT 1");
-        $stmt2->bind_param("is", $id_ujian, $nis);
-        $stmt2->execute();
-        $result2 = $stmt2->get_result();
-        $has_remedi_permission = $result2->num_rows > 0;
-        $stmt2->close();
-        
-        return $has_remedi_permission;
-    }
-    
-    return true;
+    // Mode "sampai tuntas": siswa boleh mengulang selama belum tuntas.
+    // Sekaligus tetap menghormati izin remedi lama.
+    return tuntasBolehUlang($conn, $id_ujian, $nis);
 }
 
 function validateTemporaryUnique($conn, $id_ujian, $nis) {
@@ -53,25 +38,8 @@ function validateTemporaryUnique($conn, $id_ujian, $nis) {
         return true;
     }
     
-    $stmt = $conn->prepare("SELECT id FROM hasil_ujian WHERE id_ujian = ? AND nis = ? LIMIT 1");
-    $stmt->bind_param("is", $id_ujian, $nis);
-    $stmt->execute();
-    $result = $stmt->get_result();
-    $has_completed = $result->num_rows > 0;
-    $stmt->close();
-    
-    if ($has_completed) {
-        $stmt = $conn->prepare("SELECT id FROM izin_remedi WHERE id_ujian = ? AND nis = ? LIMIT 1");
-        $stmt->bind_param("is", $id_ujian, $nis);
-        $stmt->execute();
-        $result = $stmt->get_result();
-        $has_remedi_permission = $result->num_rows > 0;
-        $stmt->close();
-        
-        return $has_remedi_permission;
-    }
-    
-    return true;
+    // Belum mengerjakan, atau sudah pernah tapi belum tuntas / punya izin remedi.
+    return tuntasBolehUlang($conn, $id_ujian, $nis);
 }
 
 function verifyCSRF($token, $expected) {
@@ -181,7 +149,7 @@ function handleCheckCompletion($conn, $input) {
         throw new Exception('NIS is required');
     }
     
-    $stmt = $conn->prepare("SELECT id, total_skor, created_at FROM hasil_ujian WHERE id_ujian = ? AND nis = ? LIMIT 1");
+    $stmt = $conn->prepare("SELECT id, total_skor, waktu_submit FROM hasil_ujian WHERE id_ujian = ? AND nis = ? LIMIT 1");
     $stmt->bind_param("is", $id_ujian, $nis);
     $stmt->execute();
     $result = $stmt->get_result();
@@ -189,41 +157,30 @@ function handleCheckCompletion($conn, $input) {
     if ($result->num_rows > 0) {
         $row = $result->fetch_assoc();
         
-        // Cek apakah siswa memiliki izin remedial
-        $hasRemedi = false;
-        $stmtRemedi = $conn->prepare("SELECT id FROM izin_remedi WHERE id_ujian = ? AND nis = ? LIMIT 1");
-        $stmtRemedi->bind_param("is", $id_ujian, $nis);
-        $stmtRemedi->execute();
-        $resultRemedi = $stmtRemedi->get_result();
-        $hasRemedi = $resultRemedi->num_rows > 0;
-        $stmtRemedi->close();
+        // Info target ketuntasan
+        $info  = tuntasInfoUjian($conn, $id_ujian);
+        $poin  = tuntasTotalPoinMaks($conn, $id_ujian);
+        $nilai = tuntasHitungNilai((int)$row['total_skor'], $poin);
+        $tuntas = ($nilai >= $info['target']);
+        $bolehUlang = tuntasBolehUlang($conn, $id_ujian, $nis);
         
-        if ($hasRemedi) {
-            // Siswa remedial: jangan set completed=true, biarkan masuk ujian
+        if ($bolehUlang) {
+            // Belum tuntas (wajib ulang) atau punya izin remedi: biarkan masuk ujian
             $response['completed'] = false;
-            $response['message'] = 'Anda memiliki izin remedial. Silakan kerjakan ulang.';
+            $response['boleh_ulang'] = true;
+            $response['message'] = $tuntas
+                ? 'Anda memiliki izin mengerjakan ulang.'
+                : 'Nilai Anda belum mencapai target. Silakan mengerjakan ulang.';
         } else {
             $response['completed'] = true;
             $response['message'] = 'Anda sudah mengerjakan ujian ini';
             $response['result'] = [
-                'skor' => $row['total_skor'],
-                'tanggal' => $row['created_at']
+                'skor'    => $nilai,
+                'nilai'   => $nilai,
+                'target'  => $info['target'],
+                'tuntas'  => true,
+                'tanggal' => $row['waktu_submit'] ?? $row['created_at'] ?? null
             ];
-            
-            // Check if student can retake (has saved answers in jawaban_sementara)
-            $tableExists = $conn->query("SHOW TABLES LIKE 'jawaban_sementara'");
-            if ($tableExists && $tableExists->num_rows > 0) {
-                $stmt2 = $conn->prepare("SELECT answers, nama, kelas FROM jawaban_sementara WHERE id_ujian = ? AND nis = ? LIMIT 1");
-                $stmt2->bind_param("is", $id_ujian, $nis);
-                $stmt2->execute();
-                $result2 = $stmt2->get_result();
-                
-                if ($row2 = $result2->fetch_assoc()) {
-                    $response['can_retake'] = true;
-                    $response['message'] = 'Anda dapat mengerjakan ulang dengan jawaban tersimpan';
-                }
-                $stmt2->close();
-            }
         }
     }
     $stmt->close();
@@ -354,32 +311,22 @@ function handleSubmitFinal($conn, $input) {
         $conn->begin_transaction();
         
         // === DUPLICATE CHECK WITH ROW LOCK (FOR UPDATE) ===
+        // Mode "sampai tuntas": bila siswa belum mencapai target, submit ulang
+        // diperbolehkan (hasil terbaik tetap tersimpan).
         $checkStmt = $conn->prepare("SELECT id FROM hasil_ujian WHERE id_ujian = ? AND nis = ? LIMIT 1 FOR UPDATE");
         $checkStmt->bind_param("is", $id_ujian, $nis);
         $checkStmt->execute();
         $checkResult = $checkStmt->get_result();
         if ($checkResult->num_rows > 0) {
-            // Cek apakah siswa memiliki izin remedial
-            $stmtRemedi = $conn->prepare("SELECT id FROM izin_remedi WHERE id_ujian = ? AND nis = ? LIMIT 1");
-            $stmtRemedi->bind_param("is", $id_ujian, $nis);
-            $stmtRemedi->execute();
-            $resultRemedi = $stmtRemedi->get_result();
-            $hasRemedi = $resultRemedi->num_rows > 0;
-            $stmtRemedi->close();
-            
-            if ($hasRemedi) {
-                // Hapus hasil lama agar bisa diganti dengan yang baru
-                $deleteStmt = $conn->prepare("DELETE FROM hasil_ujian WHERE id_ujian = ? AND nis = ?");
-                $deleteStmt->bind_param("is", $id_ujian, $nis);
-                $deleteStmt->execute();
-                $deleteStmt->close();
-            } else {
-                $checkStmt->close();
+            $checkStmt->close();
+            if (!tuntasBolehUlang($conn, $id_ujian, $nis)) {
                 $conn->rollback();
                 throw new Exception('Anda sudah menyelesaikan ujian ini. Tidak dapat mengubah jawaban.');
             }
+            // Boleh mengulang: hasil lama tetap disimpan (nilai tertinggi dipertahankan).
+        } else {
+            $checkStmt->close();
         }
-        $checkStmt->close();
         
         $stmt = $conn->prepare("SELECT * FROM soal WHERE id_ujian = ?");
         $stmt->bind_param("i", $id_ujian);
@@ -457,37 +404,47 @@ function handleSubmitFinal($conn, $input) {
         if (!$checkSkorAwal || $checkSkorAwal->num_rows === 0) {
             $conn->query("ALTER TABLE hasil_ujian ADD COLUMN skor_awal INT DEFAULT NULL AFTER total_skor");
         }
-        
-        $checkCols = $conn->query("SHOW COLUMNS FROM hasil_ujian LIKE 'detail_jawaban'");
-        if ($checkCols && $checkCols->num_rows > 0) {
-            $stmt = $conn->prepare("INSERT INTO hasil_ujian (id_ujian, nis, nama, kelas, total_skor, skor_awal, detail_jawaban) VALUES (?, ?, ?, ?, ?, ?, ?)");
-            $stmt->bind_param("isssiis", $id_ujian, $nis, $nama, $kelas, $total_skor, $skor_awal, $detail_jawaban_json);
-        } else {
-            $stmt = $conn->prepare("INSERT INTO hasil_ujian (id_ujian, nis, nama, kelas, total_skor, skor_awal) VALUES (?, ?, ?, ?, ?, ?)");
-            $stmt->bind_param("isssii", $id_ujian, $nis, $nama, $kelas, $total_skor, $skor_awal);
-        }
-        
-        if ($stmt->execute()) {
-            $insert_id = $stmt->insert_id;
-            
-            $conn->query("DELETE FROM jawaban_sementara WHERE id_ujian = $id_ujian AND nis = '$nis'");
-            
-            // Commit transaction
-            $conn->commit();
-            
-            $response['success'] = true;
-            $response['message'] = 'Jawaban berhasil disubmit';
-            $response['skor'] = $total_skor;
-            $response['skor_awal'] = $skor_awal; // Original score before penalty
-            $response['penalty'] = $penalty;
-            $response['violation_count'] = $violation_count;
-            $response['total_soal'] = count($soal_list);
-            $response['jawaban_benar'] = count(array_filter($detail_jawaban, fn($d) => $d['is_correct']));
-        } else {
-            $conn->rollback();
-            throw new Exception('Gagal menyimpan jawaban: ' . $stmt->error);
-        }
-        $stmt->close();
+
+        $jumlah_benar = count(array_filter($detail_jawaban, fn($d) => $d['is_correct']));
+        $ip = $_SERVER['REMOTE_ADDR'] ?? null;
+
+        // Catat percobaan + simpan hasil terbaik (nilai tertinggi) lewat helper tuntas.
+        $hasilTuntas = tuntasCatatHasil(
+            $conn,
+            $id_ujian,
+            $nis,
+            $nama,
+            $kelas,
+            $total_skor,
+            $skor_awal,
+            $detail_jawaban_json,
+            $ip,
+            null,
+            $jumlah_benar,
+            count($soal_list)
+        );
+
+        $conn->query("DELETE FROM jawaban_sementara WHERE id_ujian = $id_ujian AND nis = '" . $conn->real_escape_string($nis) . "'");
+
+        // Commit transaction
+        $conn->commit();
+
+        $response['success'] = true;
+        $response['message'] = 'Jawaban berhasil disubmit';
+        $response['skor'] = $total_skor;
+        $response['skor_awal'] = $skor_awal; // Original score before penalty
+        $response['penalty'] = $penalty;
+        $response['violation_count'] = $violation_count;
+        $response['total_soal'] = count($soal_list);
+        $response['jawaban_benar'] = $jumlah_benar;
+        // === Info ketuntasan ===
+        $response['nilai'] = $hasilTuntas['nilai'];
+        $response['nilai_terbaik'] = $hasilTuntas['nilai_terbaik'];
+        $response['target'] = $hasilTuntas['target'];
+        $response['tuntas'] = $hasilTuntas['tuntas'];
+        $response['wajib_tuntas'] = $hasilTuntas['wajib_tuntas'];
+        $response['percobaan_ke'] = $hasilTuntas['percobaan_ke'];
+        $response['total_poin_maks'] = $hasilTuntas['total_poin_maks'];
         
     } catch (Exception $e) {
         // Rollback if transaction is still active
@@ -517,8 +474,10 @@ function handleCheckSession($conn, $input) {
     $result = $stmt->get_result();
     
     if ($result->num_rows > 0) {
-        $response['exists'] = true;
-        $response['message'] = 'Anda sudah mengerjakan ujian ini';
+        if (!tuntasBolehUlang($conn, $id_ujian, $nis)) {
+            $response['exists'] = true;
+            $response['message'] = 'Anda sudah mengerjakan ujian ini';
+        }
     }
     $stmt->close();
     

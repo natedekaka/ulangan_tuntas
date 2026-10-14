@@ -48,7 +48,7 @@ if (!empty($ujian_ids)) {
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="Sistem Ujian Online - SMA Negeri 6 Cimahi">
-    <title>Sistem Ujian Online</title>
+    <title>Ulangan Sampai Tuntas</title>
     
     <link href="vendor/fonts/poppins.css" rel="stylesheet">
     <style>
@@ -207,9 +207,9 @@ if (!empty($ujian_ids)) {
                     </div>
                     <p class="school-name mb-1"><?= htmlspecialchars($sekolah['nama_sekolah']) ?></p>
                     <h1 class="hero-title">
-                        <i class="bi bi-clipboard-check me-2"></i>Sistem Ujian Online
+                        <i class="bi bi-clipboard-check me-2"></i>Ulangan Sampai Tuntas
                     </h1>
-                    <p class="hero-subtitle">Selamat datang! Silakan pilih ujian yang tersedia di bawah ini untuk memulai.</p>
+                    <p class="hero-subtitle">Kerjakan ulangan sampai nilai Anda mencapai target ketuntasan. Belum tuntas? Ulangi sampai bisa!</p>
                 </div>
             </div>
         </div>
@@ -259,6 +259,19 @@ if (!empty($ujian_ids)) {
                                 <span><?= $soal_counts[$ujian['id']] ?? 0 ?> Soal</span>
                             </div>
                             
+                            <?php
+                            $target_kartu = isset($ujian['target_nilai']) ? (float)$ujian['target_nilai'] : 75;
+                            $wajib_tuntas_kartu = !isset($ujian['wajib_tuntas']) || $ujian['wajib_tuntas'] === 'ya';
+                            ?>
+                            <?php if ($wajib_tuntas_kartu): ?>
+                            <div class="d-flex align-items-center mb-3 text-muted small">
+                                <div class="info-icon me-2" style="background: rgba(16, 185, 129, 0.1); color: #10b981;">
+                                    <i class="bi bi-bullseye"></i>
+                                </div>
+                                <span>Target tuntas: <strong>&ge; <?= number_format($target_kartu, 0) ?></strong></span>
+                            </div>
+                            <?php endif; ?>
+                            
                             <?php 
                             $waktu = $waktu_counts[$ujian['id']] ?? 0;
                             ?>
@@ -272,7 +285,7 @@ if (!empty($ujian_ids)) {
                             <?php endif; ?>
                             
                             <a href="ujian.php?id=<?= $ujian['id'] ?>" class="btn btn-ujian text-white w-100">
-                                <i class="bi bi-pencil-square me-2"></i>Mulai Ujian
+                                <i class="bi bi-pencil-square me-2"></i>Mulai / Ulangi Ulangan
                             </a>
                         </div>
                     </div>
