@@ -2053,27 +2053,39 @@ function initExamFeatures() {
                 return false;
             }
             
-            if (!identitySaved && csrfToken) {
-                fetch(API_URL, {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        action: 'auto_save',
-                        id_ujian: ID_UJIAN,
-                        nis: nis,
-                        nama: nama,
-                        kelas: kelas,
-                        answers: {},
-                        csrf_token: csrfToken,
-                        expected_token: csrfToken
-                    })
-                }).then(r => r.json()).then(data => {
-                    if (data.success) {
-                        identitySaved = true;
-                        localStorage.setItem('exam_nis', nis);
-                        checkCompletion(nis);
-                    }
-                }).catch(console.error);
+            if (!identitySaved) {
+                const ensureToken = () => {
+                    if (csrfToken) return Promise.resolve(csrfToken);
+                    return getNewToken().then(t => { if (t) csrfToken = t; return csrfToken; });
+                };
+
+                ensureToken().then(token => {
+                    if (!token) return;
+
+                    // Simpan identitas (akan ditolak bila siswa sudah selesai — tidak masalah).
+                    fetch(API_URL, {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({
+                            action: 'auto_save',
+                            id_ujian: ID_UJIAN,
+                            nis: nis,
+                            nama: nama,
+                            kelas: kelas,
+                            answers: {},
+                            csrf_token: token,
+                            expected_token: token
+                        })
+                    }).then(r => r.json()).then(data => {
+                        if (data.success) {
+                            identitySaved = true;
+                            localStorage.setItem('exam_nis', nis);
+                        }
+                    }).catch(console.error);
+
+                    // Cek status ketuntasan: bila sudah tuntas, tampilkan layar "sudah tuntas".
+                    checkCompletion(nis);
+                });
             }
             return true;
         }
