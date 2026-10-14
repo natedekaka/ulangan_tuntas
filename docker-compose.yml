@@ -3,7 +3,7 @@ services:
     build: .
     container_name: exam6-app
     ports:
-      - "8024:80"
+      - "9327:80"
     volumes:
       - .:/var/www/html:z
     depends_on:
@@ -64,7 +64,7 @@ services:
     image: docker.io/library/phpmyadmin:latest
     container_name: exam6-pma
     ports:
-      - "8025:80"
+      - "9026:80"
     environment:
       PMA_HOST: db
       PMA_ARBITRARY: 1

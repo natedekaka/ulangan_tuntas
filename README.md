@@ -255,7 +255,7 @@ Tunggu 1-2 menit sampai semua container siap.
    gzip -k backup_db/ujian_online.sql
    #   backup_db/ujian_online.sql.gz  (ukuran ~160KB dari ~2.8MB)
    ```
-2. Buka http://localhost:8025
+2. Buka http://localhost:9026
 3. Login phpMyAdmin:
    - **Server**: `db`
    - **Username**: `root`  
@@ -274,9 +274,9 @@ Tunggu 1-2 menit sampai semua container siap.
 
 | Halaman | URL | Login |
 |---------|-----|-------|
-| **Aplikasi Utama** | http://localhost:8024 | - |
-| **Admin Panel** | http://localhost:8024/admin/login.php | `admin` / `admin123` |
-| **phpMyAdmin** | http://localhost:8025 | root / rootpass |
+| **Aplikasi Utama** | http://localhost:9327 | - |
+| **Admin Panel** | http://localhost:9327/admin/login.php | `admin` / `admin123` |
+| **phpMyAdmin** | http://localhost:9026 | root / rootpass |
 
 #### Langkah 5: Ganti Password Admin
 
@@ -400,11 +400,11 @@ mysql -u root -p ujian_online < /var/www/html/exam6/backup_db/ujian_online.sql
 
 Setelah semua langkah di atas:
 
-1. **Buka** http://localhost:8024 (Podman) atau http://localhost/exam6 (Manual)
-2. **Login admin**: http://localhost:8024/admin/login.php — `admin` / `admin123`
+1. **Buka** http://localhost:9327 (Podman) atau http://localhost/exam6 (Manual)
+2. **Login admin**: http://localhost:9327/admin/login.php — `admin` / `admin123`
 3. Di dashboard, klik **"Manajemen Ujian"** — seharusnya sudah ada ujian contoh
 4. Klik **"Soal"** pada salah satu ujian — seharusnya sudah ada soal
-5. Buka tab baru, buka http://localhost:8024 — lihat daftar ujian yang tersedia
+5. Buka tab baru, buka http://localhost:9327 — lihat daftar ujian yang tersedia
 6. Klik **"Mulai Ujian"** pada salah satu ujian, isi identitas contoh, dan coba kerjakan
 
 > ❓ **Udah login tapi error?** Cek kembali langkah import database. Pastikan file `backup_db/ujian_online.sql` sudah diimport dengan benar.
@@ -527,7 +527,7 @@ Setelah semua langkah di atas:
 ### Siswa
 
 #### 1. Akses Halaman Ujian
-- Buka landing page aplikasi (http://localhost:8024)
+- Buka landing page aplikasi (http://localhost:9327)
 - Lihat daftar ujian yang tersedia (status: Aktif)
 - Klik **"Kerjakan"** pada ujian yang diinginkan
 
@@ -662,7 +662,7 @@ Device Fingerprint: Aktif
 ### 2. Error "Table 'ujian_online.ujian' doesn't exist" atau tabel tidak ditemukan
 - **Penyebab**: File `backup_db/ujian_online.sql` belum diimport
 - Solusi: Ikuti langkah import database di atas (bagian Setup Database)
-- Untuk Podman via phpMyAdmin: http://localhost:8025 → login → pilih `ujian_online` → Import
+- Untuk Podman via phpMyAdmin: http://localhost:9026 → login → pilih `ujian_online` → Import
 - Untuk XAMPP via phpMyAdmin: http://localhost/phpmyadmin → Import
 
 ### 3. Gambar soal tidak muncul
