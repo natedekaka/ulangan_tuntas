@@ -255,7 +255,7 @@ Tunggu 1-2 menit sampai semua container siap.
    gzip -k backup_db/ujian_online.sql
    #   backup_db/ujian_online.sql.gz  (ukuran ~160KB dari ~2.8MB)
    ```
-2. Buka http://localhost:9026
+2. Buka http://localhost:9328
 3. Login phpMyAdmin:
    - **Server**: `db`
    - **Username**: `root`  
@@ -276,7 +276,7 @@ Tunggu 1-2 menit sampai semua container siap.
 |---------|-----|-------|
 | **Aplikasi Utama** | http://localhost:9327 | - |
 | **Admin Panel** | http://localhost:9327/admin/login.php | `admin` / `admin123` |
-| **phpMyAdmin** | http://localhost:9026 | root / rootpass |
+| **phpMyAdmin** | http://localhost:9328 | root / rootpass |
 
 #### Langkah 5: Ganti Password Admin
 
@@ -662,7 +662,7 @@ Device Fingerprint: Aktif
 ### 2. Error "Table 'ujian_online.ujian' doesn't exist" atau tabel tidak ditemukan
 - **Penyebab**: File `backup_db/ujian_online.sql` belum diimport
 - Solusi: Ikuti langkah import database di atas (bagian Setup Database)
-- Untuk Podman via phpMyAdmin: http://localhost:9026 → login → pilih `ujian_online` → Import
+- Untuk Podman via phpMyAdmin: http://localhost:9328 → login → pilih `ujian_online` → Import
 - Untuk XAMPP via phpMyAdmin: http://localhost/phpmyadmin → Import
 
 ### 3. Gambar soal tidak muncul

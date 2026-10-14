@@ -64,7 +64,7 @@ services:
     image: docker.io/library/phpmyadmin:latest
     container_name: exam6-pma
     ports:
-      - "9026:80"
+      - "9328:80"
     environment:
       PMA_HOST: db
       PMA_ARBITRARY: 1
