@@ -1,6 +1,8 @@
 # Ignore uploads and cache
 uploads/*
 !uploads/index.php
+!uploads/.htaccess
+!uploads/.gitkeep
 
 # Ignore docker data
 migrations/*

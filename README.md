@@ -164,13 +164,15 @@ ulangan_tuntas/
 │   ├── tuntas.php              # Logika "Ulangan Sampai Tuntas" (hitung nilai, percobaan, status)
 │   └── db_helper.php           # Database helper functions (fetchAllPrepared, fetchRowPrepared)
 ├── vendor/                     # Library (Bootstrap, Bootstrap Icons)
-├── uploads/                    # File upload (logo, gambar soal)
+├── uploads/                    # File upload (logo sekolah, gambar soal & opsi)
+│   ├── index.php               # Pencegah listing direktori
+│   └── .htaccess               # Cegah eksekusi skrip di folder upload
 ├── migrations/                 # Database migrations
 │   ├── 06_performance_indexes.sql
 │   ├── 07_add_kategori_timer_soal.sql
 │   └── 09_ulangan_tuntas.sql   # Kolom target_nilai/wajib_tuntas + tabel percobaan_ujian
 ├── backup_db/                  # Database backup
-│   └── ujian_online.sql       # Full database backup
+│   └── ulangan.sql       # Full database backup
 ├── index.php                   # Landing page (list ujian)
 ├── ujian.php                   # Halaman ujian siswa
 ├── review.php                  # Review jawaban setelah submit
@@ -214,6 +216,64 @@ Kolom & tabel ini dibuat **otomatis** oleh `config/init_sekolah.php` saat aplika
 
 ---
 
+## Menjalankan Berdampingan dengan `exam6` (Nama Database)
+
+Aplikasi ini memakai nama database **`ulangan`** (bukan `ujian_online`), jadi bisa dijalankan di server yang sama dengan aplikasi `exam6` **tanpa bentrok**. Yang dibedakan:
+
+| Aspek | exam6 | ulangan_tuntas |
+|-------|-------|----------------|
+| Nama database | `ujian_online` | **`ulangan`** |
+| Container app | `exam6-app` | `ulangan-app` |
+| Container db | `exam6-db` | `ulangan-db` |
+| Container phpMyAdmin | `exam6-pma` | `ulangan-pma` |
+| Volume data | `exam6-dbdata` | `ulangan-dbdata` |
+| Network | `exam6-net` | `ulangan-net` |
+
+Nama database diatur di `config/database.php` (default `ulangan`, bisa dioverride lewat environment `DB_NAME`).
+
+### Bila sudah terlanjur memakai database `ujian_online`
+
+Ganti nama database yang dipakai aplikasi (tanpa menyentuh data `exam6`; jalankan salah satu):
+
+```sql
+-- Cara A: rename database (MySQL 8 tidak punya RENAME DATABASE — buat baru lalu salin)
+CREATE DATABASE IF NOT EXISTS ulangan CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci;
+-- lalu salin isi (pilih salah satu):
+```
+
+```bash
+# Cara B: dump dari ujian_online lalu import ke ulangan (di server Debian)
+mysqldump -u root -p ujian_online | mysql -u root -p ulangan
+
+# Cara C: import dari file backup yang disertakan (database `ulangan` sudah diset di dalamnya)
+mysql -u root -p < backup_db/ulangan.sql
+```
+
+Setelah itu pastikan `config/database.php` memakai `ulangan` (atau set env `DB_NAME=ulangan`).
+
+> ⚠️ File `backup_db/ulangan.sql` sudah memakai `CREATE DATABASE ulangan` + `USE ulangan`. Aman diimport di server yang juga punya `exam6` (tidak akan menimpa `ujian_online`).
+
+### Gambar soal/opsi ikut pindah (WAJIB saat pakai data lama)
+
+Gambar soal/opsi **tidak disimpan di dalam database**, melainkan di folder **`uploads/`** (nama file-nya saja yang tersimpan di DB). Karena itu, saat memakai data (backup) dari `exam6`, salin folder gambar dari instalasi `exam6` ke `ulangan_tuntas`:
+
+```bash
+# di server Debian (contoh)
+cp -a /var/www/html/exam6/uploads/. /var/www/html/ulangan_tuntas/uploads/
+chmod -R 775 /var/www/html/ulangan_tuntas/uploads
+```
+
+Atau, bila ingin berbagi satu folder gambar untuk kedua aplikasi (nama file acak & unik sehingga tidak bentrok):
+
+```bash
+mv /var/www/html/ulangan_tuntas/uploads /var/www/html/ulangan_tuntas/uploads.bak
+ln -s /var/www/html/exam6/uploads /var/www/html/ulangan_tuntas/uploads
+```
+
+> ✅ Setelah disalin, gambar di **halaman ujian**, **review**, dan **ekspor PDF** akan tampil. Bila gambar tampil rusak, berarti file-nya belum ada di folder `uploads/`.
+
+---
+
 ## Cara Install
 
 ### ⭐ Cara Termudah: Podman (Rekomendasi)
@@ -252,19 +312,19 @@ Tunggu 1-2 menit sampai semua container siap.
 
 1. **Compress file** (opsional — tapi bikin import jauh lebih cepat):
    ```bash
-   gzip -k backup_db/ujian_online.sql
-   #   backup_db/ujian_online.sql.gz  (ukuran ~160KB dari ~2.8MB)
+   gzip -k backup_db/ulangan.sql
+   #   backup_db/ulangan.sql.gz  (ukuran ~160KB dari ~2.8MB)
    ```
 2. Buka http://localhost:9328
 3. Login phpMyAdmin:
    - **Server**: `db`
    - **Username**: `root`  
    - **Password**: `rootpass`
-4. Di panel kiri, klik **`ujian_online`**
+4. Di panel kiri, klik **`ulangan`**
 5. Klik tab **"Import"** di menu atas
 6. Klik **"Choose File"**, pilih file:
-   - **Biasa**: `backup_db/ujian_online.sql`
-   - **Lebih cepat**: `backup_db/ujian_online.sql.gz` (compress dulu)
+   - **Biasa**: `backup_db/ulangan.sql`
+   - **Lebih cepat**: `backup_db/ulangan.sql.gz` (compress dulu)
 7. Scroll ke bawah, klik **"Go"**
 8. ✅ Selesai! Semua tabel terbuat otomatis.
 
@@ -292,9 +352,9 @@ Untuk yang sudah punya web server sendiri.
 
 | OS | Folder |
 |----|--------|
-| **Windows (XAMPP)** | `C:\xampp\htdocs\exam6` |
-| **Windows (Laragon)** | `C:\laragon\www\exam6` |
-| **Linux (LAMP)** | `/var/www/html/exam6` |
+| **Windows (XAMPP)** | `C:\xampp\htdocs\ulangan_tuntas` |
+| **Windows (Laragon)** | `C:\laragon\www\ulangan_tuntas` |
+| **Linux (LAMP)** | `/var/www/html/ulangan_tuntas` |
 
 Bisa dengan git clone atau download ZIP dan ekstrak ke folder di atas.
 
@@ -303,18 +363,18 @@ Bisa dengan git clone atau download ZIP dan ekstrak ke folder di atas.
 1. **Buka** http://localhost/phpmyadmin
 2. Klik tab **"Databases"** di menu atas
 3. **Buat database baru**:
-   - Nama: `ujian_online`
+   - Nama: `ulangan`
    - Collation: `utf8mb4_general_ci`
    - Klik **"Create"**
-4. **Klik database** `ujian_online` di panel kiri
+4. **Klik database** `ulangan` di panel kiri
 5. Klik tab **"Import"** di menu atas
 6. Klik **"Choose File"** → pilih file:
-   - **Biasa**: `backup_db/ujian_online.sql`
-   - **Lebih cepat**: `backup_db/ujian_online.sql.gz` (compress dulu: `gzip -k backup_db/ujian_online.sql`)
+   - **Biasa**: `backup_db/ulangan.sql`
+   - **Lebih cepat**: `backup_db/ulangan.sql.gz` (compress dulu: `gzip -k backup_db/ulangan.sql`)
 7. Scroll ke bawah, klik **"Go"**
 8. ✅ Database siap!
 
-> ⚠️ **Error "database exists"?** Lewati langkah 3, langsung klik database `ujian_online` di panel kiri.
+> ⚠️ **Error "database exists"?** Lewati langkah 3, langsung klik database `ulangan` di panel kiri.
 
 #### Langkah 3: Konfigurasi Koneksi Database
 
@@ -325,7 +385,7 @@ Buka file `config/database.php`, sesuaikan bagian ini:
 $host = 'localhost';
 $user = 'root';
 $password = '';           // XAMPP: kosong
-$database = 'ujian_online';
+$database = 'ulangan';
 $port = '3306';
 ```
 
@@ -336,20 +396,29 @@ $port = '3306';
 | **LAMP Ubuntu** | `root` | `(password MySQL Anda)` |
 | **MAMP** | `root` | `root` |
 
-#### Langkah 4: Permission Folder
+#### Langkah 4: Permission Folder (gambar soal & logo)
+
+Gambar soal/opsi dan logo sekolah disimpan di folder **`uploads/`**. Pastikan folder itu ada dan bisa ditulis oleh web server.
 
 **Linux/Mac:**
 ```bash
-chmod -R 777 exam6/uploads/
+mkdir -p ulangan_tuntas/uploads
+chmod -R 775 ulangan_tuntas/uploads/
+# bila web server beda user (mis. www-data):
+# sudo chown -R www-data:www-data ulangan_tuntas/uploads
 ```
+
+> `<` Jika upload gambar gagal, cek apakah folder `uploads/` writable. Aplikasi akan menampilkan pesan: *"Folder uploads/ tidak dapat ditulis…"*.
 
 **Windows:** Tidak perlu setting apa-apa.
 
+Format gambar yang didukung: **JPG, JPEG, PNG, GIF, WEBP** (maksimal **2 MB** per gambar). Gambar bisa dipasang di **pertanyaan** maupun di **setiap opsi (A–E)**, dan tampil di halaman ujian, review, serta ekspor PDF.
+
 #### Langkah 5: Akses Aplikasi
 
-Buka browser: **http://localhost/exam6**
+Buka browser: **http://localhost/ulangan_tuntas**
 
-Login admin: http://localhost/exam6/admin/login.php → `admin` / `admin123`
+Login admin: http://localhost/ulangan_tuntas/admin/login.php → `admin` / `admin123`
 
 ---
 
@@ -360,10 +429,10 @@ Buat yang lebih suka terminal:
 #### Via Podman (langsung ke container MySQL — paling cepat)
 ```bash
 # Import database langsung ke container (beberapa detik, tidak lewat browser)
-podman exec -i exam6-db mysql -uroot -prootpass ujian_online < backup_db/ujian_online.sql
+podman exec -i ulangan-db mysql -uroot -prootpass ulangan < backup_db/ulangan.sql
 ```
 
-> ⚠️ Kalau error `Warning` di baris pertama SQL, buka file `backup_db/ujian_online.sql` dan hapus baris pertama yang diawali `mysqldump: [Warning]`.
+> ⚠️ Kalau error `Warning` di baris pertama SQL, buka file `backup_db/ulangan.sql` dan hapus baris pertama yang diawali `mysqldump: [Warning]`.
 
 #### Via XAMPP / MySQL langsung
 
@@ -379,19 +448,19 @@ mysql -u root -p
 **Langkah 2: Buat database dan import**
 ```sql
 -- Jalankan perintah ini satu per satu di MySQL:
-CREATE DATABASE IF NOT EXISTS ujian_online CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
-USE ujian_online;
-SOURCE lokasi_folder_exam6/backup_db/ujian_online.sql;
+CREATE DATABASE IF NOT EXISTS ulangan CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+USE ulangan;
+SOURCE lokasi_folder_ulangan_tuntas/backup_db/ulangan.sql;
 EXIT;
 ```
 
 **Atau satu baris:**
 ```bash
 # XAMPP (Windows):
-"C:\xampp\mysql\bin\mysql.exe" -u root ujian_online < "C:\xampp\htdocs\exam6\backup_db\ujian_online.sql"
+"C:\xampp\mysql\bin\mysql.exe" -u root ulangan < "C:\xampp\htdocs\ulangan_tuntas\backup_db\ulangan.sql"
 
 # Linux/Mac:
-mysql -u root -p ujian_online < /var/www/html/exam6/backup_db/ujian_online.sql
+mysql -u root -p ulangan < /var/www/html/ulangan_tuntas/backup_db/ulangan.sql
 ```
 
 ---
@@ -400,14 +469,14 @@ mysql -u root -p ujian_online < /var/www/html/exam6/backup_db/ujian_online.sql
 
 Setelah semua langkah di atas:
 
-1. **Buka** http://localhost:9327 (Podman) atau http://localhost/exam6 (Manual)
+1. **Buka** http://localhost:9327 (Podman) atau http://localhost/ulangan_tuntas (Manual)
 2. **Login admin**: http://localhost:9327/admin/login.php — `admin` / `admin123`
 3. Di dashboard, klik **"Manajemen Ujian"** — seharusnya sudah ada ujian contoh
 4. Klik **"Soal"** pada salah satu ujian — seharusnya sudah ada soal
 5. Buka tab baru, buka http://localhost:9327 — lihat daftar ujian yang tersedia
 6. Klik **"Mulai Ujian"** pada salah satu ujian, isi identitas contoh, dan coba kerjakan
 
-> ❓ **Udah login tapi error?** Cek kembali langkah import database. Pastikan file `backup_db/ujian_online.sql` sudah diimport dengan benar.
+> ❓ **Udah login tapi error?** Cek kembali langkah import database. Pastikan file `backup_db/ulangan.sql` sudah diimport dengan benar.
 
 ---
 
@@ -656,13 +725,13 @@ Device Fingerprint: Aktif
   // XAMPP: password kosong, host localhost
   // Podman: host = db, password = rootpass
   ```
-- Untuk Podman: pastikan container `exam6-db` sudah running (`podman ps`)
-- Coba akses phpMyAdmin untuk pastikan database `ujian_online` ada dan berisi tabel
+- Untuk Podman: pastikan container `ulangan-db` sudah running (`podman ps`)
+- Coba akses phpMyAdmin untuk pastikan database `ulangan` ada dan berisi tabel
 
-### 2. Error "Table 'ujian_online.ujian' doesn't exist" atau tabel tidak ditemukan
-- **Penyebab**: File `backup_db/ujian_online.sql` belum diimport
+### 2. Error "Table 'ulangan.ujian' doesn't exist" atau tabel tidak ditemukan
+- **Penyebab**: File `backup_db/ulangan.sql` belum diimport
 - Solusi: Ikuti langkah import database di atas (bagian Setup Database)
-- Untuk Podman via phpMyAdmin: http://localhost:9328 → login → pilih `ujian_online` → Import
+- Untuk Podman via phpMyAdmin: http://localhost:9328 → login → pilih `ulangan` → Import
 - Untuk XAMPP via phpMyAdmin: http://localhost/phpmyadmin → Import
 
 ### 3. Gambar soal tidak muncul
@@ -680,8 +749,8 @@ Device Fingerprint: Aktif
 ### 6. Container tidak bisa start
 ```bash
 # Cek logs
-podman logs exam6-app
-podman logs exam6-db
+podman logs ulangan-app
+podman logs ulangan-db
 
 # Restart containers
 podman compose down
@@ -691,9 +760,9 @@ podman compose up -d
 ### 7. Database error setelah update
 ```bash
 # Jalankan migration terbaru (jika ada file baru di migrations/)
-# Lewat phpMyAdmin: buka database ujian_online → SQL → paste isi file migration
+# Lewat phpMyAdmin: buka database ulangan → SQL → paste isi file migration
 # Atau command line:
-mysql -u root -p ujian_online < migrations/08_increase_max_violations.sql
+mysql -u root -p ulangan < migrations/08_increase_max_violations.sql
 ```
 
 ---

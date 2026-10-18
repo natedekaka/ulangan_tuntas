@@ -1,6 +1,6 @@
 -- MySQL dump 10.13  Distrib 8.0.46, for Linux (x86_64)
 --
--- Host: localhost    Database: ujian_online
+-- Host: localhost    Database: ulangan
 -- ------------------------------------------------------
 -- Server version	8.0.46
 
@@ -16,14 +16,14 @@
 /*!40111 SET @OLD_SQL_NOTES=@@SQL_NOTES, SQL_NOTES=0 */;
 
 --
--- Current Database: `ujian_online`
+-- Current Database: `ulangan`
 --
 
-/*!40000 DROP DATABASE IF EXISTS `ujian_online`*/;
+/*!40000 DROP DATABASE IF EXISTS `ulangan`*/;
 
-CREATE DATABASE /*!32312 IF NOT EXISTS*/ `ujian_online` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */ /*!80016 DEFAULT ENCRYPTION='N' */;
+CREATE DATABASE /*!32312 IF NOT EXISTS*/ `ulangan` /*!40100 DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci */ /*!80016 DEFAULT ENCRYPTION='N' */;
 
-USE `ujian_online`;
+USE `ulangan`;
 
 --
 -- Table structure for table `admin_users`
@@ -337,7 +337,7 @@ INSERT INTO `ujian` VALUES (9,'Informatika - Latihan1 Merancang Jaringan Kompute
 UNLOCK TABLES;
 
 --
--- Dumping routines for database 'ujian_online'
+-- Dumping routines for database 'ulangan'
 --
 /*!40103 SET TIME_ZONE=@OLD_TIME_ZONE */;
 

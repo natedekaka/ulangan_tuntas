@@ -5,7 +5,7 @@
 -- config/init_sekolah.php (initUlanganTuntas). File ini disediakan untuk
 -- instalasi/dokumentasi manual.
 --
--- Jalankan: mysql -u root -p ujian_online < migrations/09_ulangan_tuntas.sql
+-- Jalankan: mysql -u root -p ulangan < migrations/09_ulangan_tuntas.sql
 -- (hanya bila kolom belum ada; aplikasi juga menambahkannya otomatis)
 
 ALTER TABLE `ujian`

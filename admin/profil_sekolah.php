@@ -13,6 +13,12 @@ if (!isset($_SESSION['admin_id'])) {
 
 require_once '../config/init_sekolah.php';
 
+// Pastikan folder uploads ada (untuk logo sekolah & gambar soal)
+$upload_dir = '../uploads/';
+if (!is_dir($upload_dir)) {
+    @mkdir($upload_dir, 0755, true);
+}
+
 $sekolah = getKonfigurasiSekolah($conn);
 $message = '';
 $message_type = '';
@@ -37,17 +43,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['simpan_profil'])) {
                     unlink('../uploads/' . $sekolah['logo']);
                 }
                 $logo = $filename;
+            } else {
+                $message = 'Gagal upload logo. Pastikan folder uploads/ dapat ditulis (chmod -R 775 uploads).';
+                $message_type = 'danger';
             }
         }
     }
     
-    if (updateKonfigurasiSekolah($conn, $nama_sekolah, $logo, $warna_primer, $warna_sekunder, $tampilkan_riwayat)) {
-        $message = 'Profil sekolah berhasil diperbarui!';
-        $message_type = 'success';
-        $sekolah = getKonfigurasiSekolah($conn);
-    } else {
-        $message = 'Gagal menyimpan perubahan.';
-        $message_type = 'danger';
+    if ($message === '') {
+        if (updateKonfigurasiSekolah($conn, $nama_sekolah, $logo, $warna_primer, $warna_sekunder, $tampilkan_riwayat)) {
+            $message = 'Profil sekolah berhasil diperbarui!';
+            $message_type = 'success';
+            $sekolah = getKonfigurasiSekolah($conn);
+        } else {
+            $message = 'Gagal menyimpan perubahan.';
+            $message_type = 'danger';
+        }
     }
 }
 

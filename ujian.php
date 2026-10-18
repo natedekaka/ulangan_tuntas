@@ -1410,7 +1410,7 @@ function initExamFeatures() {
                 const answered = answers[soalId] || '';
                 
                 html += '<div class=soal-card><div class=d-flex align-items-start mb-3><span class=soal-number>' + no + '</span><div class=flex-grow-1><p class=mb-2 fw-medium>' + soal.pertanyaan.replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>') + '</p>';
-                if (soal.gambar_pertanyaan) html += '<img src=uploads/' + soal.gambar_pertanyaan + ' class=soal-img alt=Gambar alt=true>';
+                if (soal.gambar_pertanyaan) html += '<img src="uploads/' + soal.gambar_pertanyaan + '" class="soal-img" alt="Gambar soal" onerror="this.style.display=\'none\'">';
                 html += '<small class=text-muted d-block mt-2>Poin: ' + soal.poin + '</small></div></div><div class=ms-5>';
                 
                 for (const key in options) {
@@ -1418,7 +1418,7 @@ function initExamFeatures() {
                     const checked = answered === key ? ' checked' : '';
                     html += '<label class=option-label><input type=radio name=jawaban_' + soalId + ' value=' + key + checked + ' class=d-none onchange=updateProgress()><span class=option-letter>' + key.toUpperCase() + '</span><span class=option-content>';
                     if (opt.t) html += '<span class=opsi-text>' + opt.t.replace(/</g,'&lt;').replace(/>/g,'&gt;') + '</span>';
-                    if (opt.i) html += '<img src=uploads/' + opt.i + ' class=opsi-img alt=Opsi ' + key + '>';
+                    if (opt.i) html += '<img src="uploads/' + opt.i + '" class="opsi-img" alt="Opsi ' + key.toUpperCase() + '" onerror="this.style.display=\'none\'">';
                     html += '</span></label>';
                 }
                 

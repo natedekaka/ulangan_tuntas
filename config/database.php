@@ -4,7 +4,7 @@
 $host = getenv('DB_HOST') ?: 'db:3306';
 $user = getenv('DB_USER') ?: 'root';
 $password = getenv('DB_PASS') ?: 'rootpass';
-$database = getenv('DB_NAME') ?: 'ujian_online';
+$database = getenv('DB_NAME') ?: 'ulangan';
 $port = getenv('DB_PORT') ?: '3306';
 
 $conn = new mysqli($host, $user, $password, $database, $port);

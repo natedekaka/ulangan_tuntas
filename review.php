@@ -53,7 +53,7 @@ if (!$detail_jawaban) {
 
 // Fetch original soal data for fallback (for old records without opsi fields)
 $soal_map = [];
-$stmt = $conn->prepare("SELECT id, opsi_a, opsi_b, opsi_c, opsi_d, opsi_e FROM soal WHERE id_ujian = ?");
+$stmt = $conn->prepare("SELECT id, opsi_a, opsi_b, opsi_c, opsi_d, opsi_e, gambar_pertanyaan, gambar_a, gambar_b, gambar_c, gambar_d, gambar_e FROM soal WHERE id_ujian = ?");
 $stmt->bind_param("i", $id_ujian);
 $stmt->execute();
 $result = $stmt->get_result();
@@ -62,14 +62,15 @@ while ($row = $result->fetch_assoc()) {
 }
 $stmt->close();
 
-// Merge with original soal data if opsi fields are missing
+// Merge with original soal data if opsi/gambar fields are missing
+$merge_fields = ['opsi_a','opsi_b','opsi_c','opsi_d','opsi_e','gambar_pertanyaan','gambar_a','gambar_b','gambar_c','gambar_d','gambar_e'];
 foreach ($detail_jawaban as &$jw) {
-    if (empty($jw['opsi_a']) && isset($soal_map[$jw['soal_id']])) {
-        $jw['opsi_a'] = $soal_map[$jw['soal_id']]['opsi_a'] ?? '';
-        $jw['opsi_b'] = $soal_map[$jw['soal_id']]['opsi_b'] ?? '';
-        $jw['opsi_c'] = $soal_map[$jw['soal_id']]['opsi_c'] ?? '';
-        $jw['opsi_d'] = $soal_map[$jw['soal_id']]['opsi_d'] ?? '';
-        $jw['opsi_e'] = $soal_map[$jw['soal_id']]['opsi_e'] ?? '';
+    if (isset($soal_map[$jw['soal_id']])) {
+        foreach ($merge_fields as $f) {
+            if (empty($jw[$f]) && !empty($soal_map[$jw['soal_id']][$f])) {
+                $jw[$f] = $soal_map[$jw['soal_id']][$f];
+            }
+        }
     }
 }
 unset($jw);
@@ -181,6 +182,23 @@ foreach ($detail_jawaban as $jw) {
             font-size: 3rem;
             font-weight: 700;
         }
+
+        .review-img {
+            max-width: 100%;
+            max-height: 320px;
+            border-radius: 10px;
+            margin: 10px 0;
+            display: block;
+        }
+
+        .review-img-opsi {
+            max-width: 140px;
+            max-height: 100px;
+            border-radius: 8px;
+            margin-left: 10px;
+            vertical-align: middle;
+            cursor: zoom-in;
+        }
     </style>
 </head>
 <body>
@@ -232,6 +250,9 @@ foreach ($detail_jawaban as $jw) {
                 <div class="flex-grow-1">
                     <div class="d-flex justify-content-between align-items-start">
                         <p class="mb-2 fw-medium fs-5"><?= nl2br(htmlspecialchars($jw['pertanyaan'])) ?></p>
+                        <?php if (!empty($jw['gambar_pertanyaan'])): ?>
+                            <img src="uploads/<?= htmlspecialchars($jw['gambar_pertanyaan']) ?>" alt="Gambar soal" class="review-img" onerror="this.style.display='none'">
+                        <?php endif; ?>
                         <span class="<?= $jw['is_correct'] ? 'badge-benar' : 'badge-salah' ?>">
                             <i class="bi bi-<?= $jw['is_correct'] ? 'check-circle' : 'x-circle' ?> me-1"></i>
                             <?= $jw['is_correct'] ? 'BENAR' : 'SALAH' ?>
@@ -252,9 +273,17 @@ foreach ($detail_jawaban as $jw) {
                     'd' => $jw['opsi_d'] ?? '',
                     'e' => $jw['opsi_e'] ?? ''
                 ];
+                $gambar_options = [
+                    'a' => $jw['gambar_a'] ?? '',
+                    'b' => $jw['gambar_b'] ?? '',
+                    'c' => $jw['gambar_c'] ?? '',
+                    'd' => $jw['gambar_d'] ?? '',
+                    'e' => $jw['gambar_e'] ?? ''
+                ];
                 
                 foreach ($options as $key => $opt): 
-                    if (empty($opt)) continue;
+                    $gambar_opt = $gambar_options[$key] ?? '';
+                    if (empty($opt) && empty($gambar_opt)) continue;
                     
                     $is_jawaban_siswa = ($jw['jawaban_siswa'] === $key);
                     $is_kunci = ($jw['kunci_jawaban'] === $key);
@@ -268,7 +297,10 @@ foreach ($detail_jawaban as $jw) {
                 ?>
                 <div class="d-flex align-items-center mb-2">
                     <span class="badge bg-secondary me-2" style="width: 30px;"><?= strtoupper($key) ?></span>
-                    <span><?= htmlspecialchars($opt) ?></span>
+                    <?php if (!empty($opt)): ?><span><?= htmlspecialchars($opt) ?></span><?php endif; ?>
+                    <?php if (!empty($gambar_opt)): ?>
+                        <img src="uploads/<?= htmlspecialchars($gambar_opt) ?>" alt="Opsi <?= strtoupper($key) ?>" class="review-img-opsi" onerror="this.style.display='none'">
+                    <?php endif; ?>
                     <?php if ($is_kunci): ?>
                         <span class="badge bg-success ms-2"><i class="bi bi-check"></i> Jawaban Benar</span>
                     <?php elseif ($is_jawaban_siswa): ?>

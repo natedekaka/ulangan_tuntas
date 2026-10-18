@@ -362,16 +362,22 @@ function handleSubmitFinal($conn, $input) {
             $detail_jawaban[] = [
                 'soal_id' => $soal_id,
                 'pertanyaan' => $soal['pertanyaan'],
+                'gambar_pertanyaan' => $soal['gambar_pertanyaan'] ?? null,
                 'jawaban_siswa' => $jawaban,
                 'kunci_jawaban' => $soal['kunci_jawaban'],
                 'is_correct' => $is_correct,
                 'poin' => $soal['poin'],
                 'poin_diperoleh' => $is_correct ? $soal['poin'] : 0,
                 'opsi_a' => $soal['opsi_a'],
+                'gambar_a' => $soal['gambar_a'] ?? null,
                 'opsi_b' => $soal['opsi_b'],
+                'gambar_b' => $soal['gambar_b'] ?? null,
                 'opsi_c' => $soal['opsi_c'],
+                'gambar_c' => $soal['gambar_c'] ?? null,
                 'opsi_d' => $soal['opsi_d'],
-                'opsi_e' => $soal['opsi_e']
+                'gambar_d' => $soal['gambar_d'] ?? null,
+                'opsi_e' => $soal['opsi_e'],
+                'gambar_e' => $soal['gambar_e'] ?? null
             ];
         }
         

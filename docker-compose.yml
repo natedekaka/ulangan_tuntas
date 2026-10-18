@@ -1,22 +1,27 @@
 services:
   app:
     build: .
-    container_name: exam6-app
+    container_name: ulangan-app
     ports:
       - "9327:80"
+    environment:
+      DB_HOST: db:3306
+      DB_NAME: ulangan
+      DB_USER: root
+      DB_PASS: rootpass
     volumes:
       - .:/var/www/html:z
     depends_on:
       - db
       - redis
     networks:
-      - exam6-net
+      - ulangan-net
     restart: unless-stopped
 
 
   redis:
     image: docker.io/library/redis:7-alpine
-    container_name: exam6-redis
+    container_name: ulangan-redis
     command: redis-server --appendonly no --maxmemory 256mb --maxmemory-policy allkeys-lru
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
@@ -24,13 +29,13 @@ services:
       timeout: 3s
       retries: 3
     networks:
-      - exam6-net
+      - ulangan-net
     restart: unless-stopped
 
 
   db:
     image: docker.io/library/mysql:8.0
-    container_name: exam6-db
+    container_name: ulangan-db
     command: >
       --max_connections=500
       --innodb_buffer_pool_size=4G
@@ -46,7 +51,7 @@ services:
       --join_buffer_size=4M
     environment:
       MYSQL_ROOT_PASSWORD: rootpass
-      MYSQL_DATABASE: ujian_online
+      MYSQL_DATABASE: ulangan
       MYSQL_USER: user
       MYSQL_PASSWORD: pass123
       TZ: Asia/Makassar
@@ -54,15 +59,15 @@ services:
       - "3313:3306"
     volumes:
       - ./migrations:/docker-entrypoint-initdb.d:ro
-      - exam6-dbdata:/var/lib/mysql:z
+      - ulangan-dbdata:/var/lib/mysql:z
     networks:
-      - exam6-net
+      - ulangan-net
     restart: unless-stopped
 
 
   phpmyadmin:
     image: docker.io/library/phpmyadmin:latest
-    container_name: exam6-pma
+    container_name: ulangan-pma
     ports:
       - "9328:80"
     environment:
@@ -71,12 +76,12 @@ services:
     depends_on:
       - db
     networks:
-      - exam6-net
+      - ulangan-net
     restart: unless-stopped
 
 volumes:
-  exam6-dbdata:
+  ulangan-dbdata:
 
 networks:
-  exam6-net:
+  ulangan-net:
     driver: bridge

@@ -77,7 +77,14 @@ function uploadGambar($file, $prefix) {
     
     $ext = $validation['ext'];
     $filename = $prefix . '_' . bin2hex(random_bytes(8)) . '.' . $ext;
-    $target = '../uploads/' . $filename;
+    $dir = '../uploads/';
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0755, true);
+    }
+    if (!is_writable($dir)) {
+        return ['error' => 'Folder uploads/ tidak dapat ditulis. Jalankan: chmod -R 775 uploads'];
+    }
+    $target = $dir . $filename;
     
     if (move_uploaded_file($file['tmp_name'], $target)) {
         return ['success' => $filename];
