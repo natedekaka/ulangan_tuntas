@@ -56,7 +56,7 @@ services:
       MYSQL_PASSWORD: pass123
       TZ: Asia/Makassar
     ports:
-      - "3313:3306"
+      - "3314:3306"
     volumes:
       - ./migrations:/docker-entrypoint-initdb.d:ro
       - ulangan-dbdata:/var/lib/mysql:z

@@ -228,6 +228,11 @@ Aplikasi ini memakai nama database **`ulangan`** (bukan `ujian_online`), jadi bi
 | Container phpMyAdmin | `exam6-pma` | `ulangan-pma` |
 | Volume data | `exam6-dbdata` | `ulangan-dbdata` |
 | Network | `exam6-net` | `ulangan-net` |
+| Port aplikasi | `8080` | `9327` |
+| Port phpMyAdmin | `8081` | `9328` |
+| Port database (host) | `3313` | `3314` |
+
+> Port host dibuat berbeda supaya kedua aplikasi bisa jalan bersamaan di server yang sama. Port database hanya untuk akses dari luar; aplikasi & phpMyAdmin terhubung lewat jaringan internal Docker.
 
 Nama database diatur di `config/database.php` (default `ulangan`, bisa dioverride lewat environment `DB_NAME`).
 
